@@ -61,6 +61,8 @@ type System interface {
 	UploadResultFile(endpoint, file string, projectVersionID int64) error
 	DownloadReportFile(endpoint string, projectVersionID int64) ([]byte, error)
 	DownloadResultFile(endpoint string, projectVersionID int64) ([]byte, error)
+	GetAuthEntityOfProjectVersion(id int64) ([]*models.AuthenticationEntity, error)
+	UpdateCollectionAuthEntityOfProjectVersion(id int64, data []*models.AuthenticationEntity) error
 }
 
 // SystemInstance is the specific instance
@@ -114,8 +116,8 @@ func (sys *SystemInstance) AuthenticateRequest(req runtime.ClientRequest, format
 // autoCreate and projectVersion parameters only used if autoCreate=true
 func (sys *SystemInstance) GetProjectByName(projectName string, autoCreate bool, projectVersionName string) (*models.Project, error) {
 	nameParam := fmt.Sprintf("name=%v", projectName)
-	fullText  := true
-	params    := &project_controller.ListProjectParams{Q: &nameParam, Fulltextsearch: &fullText}
+	fullText := true
+	params := &project_controller.ListProjectParams{Q: &nameParam, Fulltextsearch: &fullText}
 	params.WithTimeout(sys.timeout)
 	result, err := sys.client.ProjectController.ListProject(params, sys)
 	if err != nil {
@@ -175,27 +177,27 @@ func (sys *SystemInstance) GetProjectVersionDetailsByProjectIDAndVersionName(id 
 func (sys *SystemInstance) CreateProjectVersionIfNotExist(projectName, projectVersionName, description string) (*models.ProjectVersion, error) {
 	var projectId int64 = 0
 	// check if project with projectName exists
-	projectResp, err := sys.GetProjectByName(projectName, false,  "")
+	projectResp, err := sys.GetProjectByName(projectName, false, "")
 	if err == nil {
 		// project already exists, all we need to do is append a new ProjectVersion to it
 		// save the project id for later
 		projectId = projectResp.ID
 	}
 
-	issueTemplateId   := "4c5799c9-1940-4abe-b57a-3bcad88eb041"
-	active            := true
-	committed         := true
+	issueTemplateId := "4c5799c9-1940-4abe-b57a-3bcad88eb041"
+	active := true
+	committed := true
 	projectVersionDto := &models.ProjectVersion{
 		Name:            &projectVersionName,
 		Description:     &description,
 		IssueTemplateID: &issueTemplateId,
 		Active:          &active,
 		Committed:       &committed,
-		Project: &models.Project{ID: projectId},
+		Project:         &models.Project{ID: projectId},
 	}
 
 	if projectVersionDto.Project.ID == 0 { // project does not exist, set one up
-		projectVersionDto.Project = &models.Project {
+		projectVersionDto.Project = &models.Project{
 			Name:            &projectName,
 			Description:     description,
 			IssueTemplateID: &issueTemplateId,
@@ -211,6 +213,7 @@ func (sys *SystemInstance) CreateProjectVersionIfNotExist(projectName, projectVe
 	}
 	return projectVersion, nil
 }
+
 // LookupOrCreateProjectVersionDetailsForPullRequest looks up a project version for pull requests or creates it from scratch
 func (sys *SystemInstance) LookupOrCreateProjectVersionDetailsForPullRequest(projectID int64, masterProjectVersion *models.ProjectVersion, pullRequestName string) (*models.ProjectVersion, error) {
 	projectVersion, _ := sys.GetProjectVersionDetailsByProjectIDAndVersionName(projectID, pullRequestName, false, "")
@@ -333,7 +336,7 @@ func (sys *SystemInstance) ProjectVersionCopyCurrentState(sourceID, targetID int
 	return nil
 }
 
-func (sys *SystemInstance) getAuthEntityOfProjectVersion(id int64) ([]*models.AuthenticationEntity, error) {
+func (sys *SystemInstance) GetAuthEntityOfProjectVersion(id int64) ([]*models.AuthenticationEntity, error) {
 	embed := "roles"
 	params := &auth_entity_of_project_version_controller.ListAuthEntityOfProjectVersionParams{Embed: &embed, ParentID: id}
 	params.WithTimeout(sys.timeout)
@@ -344,7 +347,7 @@ func (sys *SystemInstance) getAuthEntityOfProjectVersion(id int64) ([]*models.Au
 	return result.GetPayload().Data, nil
 }
 
-func (sys *SystemInstance) updateCollectionAuthEntityOfProjectVersion(id int64, data []*models.AuthenticationEntity) error {
+func (sys *SystemInstance) UpdateCollectionAuthEntityOfProjectVersion(id int64, data []*models.AuthenticationEntity) error {
 	params := &auth_entity_of_project_version_controller.UpdateCollectionAuthEntityOfProjectVersionParams{ParentID: id, Data: data}
 	params.WithTimeout(sys.timeout)
 	_, err := sys.client.AuthEntityOfProjectVersionController.UpdateCollectionAuthEntityOfProjectVersion(params, sys)
@@ -356,11 +359,11 @@ func (sys *SystemInstance) updateCollectionAuthEntityOfProjectVersion(id int64, 
 
 // ProjectVersionCopyPermissions copies the authentication entity of the project version addressed by sourceID to the one of targetID
 func (sys *SystemInstance) ProjectVersionCopyPermissions(sourceID, targetID int64) error {
-	result, err := sys.getAuthEntityOfProjectVersion(sourceID)
+	result, err := sys.GetAuthEntityOfProjectVersion(sourceID)
 	if err != nil {
 		return err
 	}
-	err = sys.updateCollectionAuthEntityOfProjectVersion(targetID, result)
+	err = sys.UpdateCollectionAuthEntityOfProjectVersion(targetID, result)
 	if err != nil {
 		return err
 	}

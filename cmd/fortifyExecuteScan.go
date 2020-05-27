@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,6 +61,10 @@ func runFortifyScan(config fortifyExecuteScanOptions, sys fortify.System, comman
 	projectVersion, err := sys.GetProjectVersionDetailsByProjectIDAndVersionName(project.ID, fortifyProjectVersion, config.AutoCreate, fortifyProjectName)
 	if err != nil {
 		log.Entry().Fatalf("Failed to load project version %v: %v", fortifyProjectVersion, err)
+	}
+
+	if config.AuthEntityIds != "" {
+		ensureAuthEntitiesExist(projectVersion.ID, sys, &config)
 	}
 
 	if len(config.PullRequestName) > 0 {
@@ -565,4 +570,40 @@ func appendToOptions(config fortifyExecuteScanOptions, options []string, t map[s
 		return append(options, t["pythonIncludes"])
 	}
 	return options
+}
+
+func ensureAuthEntitiesExist(projectVersionId int64, sys fortify.System, config *fortifyExecuteScanOptions) {
+	entityList, err := sys.GetAuthEntityOfProjectVersion(projectVersionId)
+	if err != nil {
+		log.Entry().WithError(err).Fatalf("Failed to fetch auth entities for project version %v", projectVersionId)
+	}
+
+	// For each ensureId in config.AuthEntityIds, ensure that it exists in the current project version's collection of auth entities.
+	for _, ensureIdStr := range strings.Split(config.AuthEntityIds, ",") {
+		found := false
+		ensureIdStr = strings.TrimSpace(ensureIdStr)
+		ensureId, err := strconv.Atoi(ensureIdStr)
+
+		if err != nil {
+			log.Entry().WithError(err).Fatalf("Failed to convert entity ID to int: %s", ensureIdStr)
+		}
+
+		for _, entity := range entityList {
+			if entity.ID == int64(ensureId) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			newEntity := &models.AuthenticationEntity{
+				ID:     int64(ensureId),
+				IsLdap: true,
+			}
+			err := sys.UpdateCollectionAuthEntityOfProjectVersion(projectVersionId, []*models.AuthenticationEntity{newEntity})
+			if err != nil {
+				log.Entry().WithError(err).Fatalf("Failed to update collection of auth entities for project %v, entity ID: %v", projectVersionId, newEntity.ID)
+			}
+		}
+	}
 }
