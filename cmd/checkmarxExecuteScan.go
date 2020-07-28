@@ -29,6 +29,7 @@ func checkmarxExecuteScan(config checkmarxExecuteScanOptions, telemetryData *tel
 	if err != nil {
 		log.Entry().WithError(err).Fatalf("Failed to create Checkmarx client talking to URL %v", config.ServerURL)
 	}
+
 	runScan(config, sys, "./", influx)
 	return nil
 }
@@ -140,9 +141,19 @@ func triggerScan(config checkmarxExecuteScanOptions, sys checkmarx.System, proje
 		var reports []piperutils.Path
 		if config.GeneratePdfReport {
 			pdfReportName := createReportName(workspace, "CxSASTReport_%v.pdf")
-			ok := downloadAndSaveReport(sys, pdfReportName, scan)
+			ok := downloadAndSavePDFReport(sys, pdfReportName, scan)
 			if ok {
 				reports = append(reports, piperutils.Path{Target: pdfReportName, Mandatory: true})
+			}
+		} else {
+			log.Entry().Debug("Report generation is disabled via configuration")
+		}
+
+		if config.GenerateJSONReport {
+			jsonReportName := createReportName(workspace, "CxSASTReport_%v.json")
+			ok := downloadAndSaveJSONReport(sys, jsonReportName, scan, config.TeamID)
+			if ok {
+				reports = append(reports, piperutils.Path{Target: jsonReportName, Mandatory: true})
 			}
 		} else {
 			log.Entry().Debug("Report generation is disabled via configuration")
@@ -262,10 +273,22 @@ func reportToInflux(results map[string]interface{}, influx *checkmarxExecuteScan
 	influx.checkmarx_data.fields.report_creation_time = results["ReportCreationTime"].(string)
 }
 
-func downloadAndSaveReport(sys checkmarx.System, reportFileName string, scan checkmarx.Scan) bool {
+func downloadAndSaveJSONReport(sys checkmarx.System, reportFileName string, scan checkmarx.Scan, teamID string) bool {
+	bytes := sys.GetJSONReport(scan.ID, teamID)
+	if bytes != nil {
+		log.Entry().Debugf("Downloading and saving JSON report to file %v...", reportFileName)
+		err := ioutil.WriteFile(reportFileName, bytes, 0700)
+		if err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func downloadAndSavePDFReport(sys checkmarx.System, reportFileName string, scan checkmarx.Scan) bool {
 	ok, report := generateAndDownloadReport(sys, scan.ID, "PDF")
 	if ok {
-		log.Entry().Debugf("Saving report to file %v...", reportFileName)
+		log.Entry().Debugf("Saving PDF report to file %v...", reportFileName)
 		ioutil.WriteFile(reportFileName, report, 0700)
 		return true
 	}
@@ -395,6 +418,11 @@ func loadPreset(sys checkmarx.System, presetValue string) (bool, checkmarx.Prese
 		return true, preset
 	}
 	return false, checkmarx.Preset{}
+}
+
+func saveJSONReportToDisk(bytes []byte) bool {
+
+	return true
 }
 
 func generateAndDownloadReport(sys checkmarx.System, scanID int, reportType string) (bool, []byte) {
