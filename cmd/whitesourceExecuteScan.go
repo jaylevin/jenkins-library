@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -257,7 +258,7 @@ func checkSecurityViolations(config *ScanOptions, sys *System) error {
 	return nil
 }
 
-// pollProjectStatus polls project LastUpdateTime until it reflects the most recent scan AND ensures the pdf risk report is not blank.
+// pollProjectStatus polls project LastUpdateTime until it reflects the most recent scan AND ensures the pdf risk report is not blank (roughly > 36k bytes).
 func pollProjectStatus(config *ScanOptions, sys *System, scanFinishTime time.Time) error {
 	log.Entry().Info("Polling project status before downloading reports...")
 	log.Entry().Infof("Project token: %s", config.ProjectToken)
@@ -308,7 +309,13 @@ func downloadReports(config *ScanOptions, sys *System) ([]piperutils.Path, error
 	if err != nil {
 		return nil, err
 	}
-	return []piperutils.Path{*vulnPath, *riskPath}, nil
+
+	alertsPath, err := downloadProjectAlertsReport(config, sys)
+	if err != nil {
+		return nil, err
+	}
+
+	return []piperutils.Path{*vulnPath, *riskPath, *alertsPath}, nil
 }
 
 func downloadVulnerabilityReport(config *ScanOptions, sys *System) (*piperutils.Path, error) {
@@ -331,6 +338,28 @@ func downloadVulnerabilityReport(config *ScanOptions, sys *System) (*piperutils.
 
 	log.Entry().Infof("Successfully downloaded vulnerability report to %s", rptFileName)
 	pathName := fmt.Sprintf("%s Vulnerability Report", config.ProjectName)
+	return &piperutils.Path{Name: pathName, Target: rptFileName}, nil
+}
+
+func downloadProjectAlertsReport(config *ScanOptions, sys *System) (*piperutils.Path, error) {
+	alerts, err := sys.GetProjectAlertsReport(config.ProjectToken)
+	if err != nil {
+		return nil, err
+	}
+
+	alertsBytes, err := json.Marshal(alerts)
+	if err != nil {
+		return nil, err
+	}
+
+	rptFileName := fmt.Sprintf("%s-alerts-report.json", config.ProjectName)
+	rptFileName = filepath.Join(config.ReportDirectoryName, rptFileName)
+	if err := ioutil.WriteFile(rptFileName, alertsBytes, 0644); err != nil {
+		return nil, err
+	}
+
+	log.Entry().Infof("Successfully downloaded alerts report to %s", rptFileName)
+	pathName := fmt.Sprintf("%s JSON Alerts Report", config.ProjectName)
 	return &piperutils.Path{Name: pathName, Target: rptFileName}, nil
 }
 

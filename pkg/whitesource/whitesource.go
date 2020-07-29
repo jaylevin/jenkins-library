@@ -365,6 +365,33 @@ func (s *System) GetProductByName(productName string) (*Product, error) {
 	return &product, nil
 }
 
+// GetProjectAlertsReport
+func (s *System) GetProjectAlertsReport(projectToken string) ([]Alert, error) {
+	wsResponse := struct {
+		Alerts []Alert `json:"alerts"`
+	}{
+		Alerts: []Alert{},
+	}
+
+	req := Request{
+		RequestType:  "getProjectAlertsReport",
+		ProjectToken: projectToken,
+		Format:       "json",
+	}
+
+	respBody, err := s.sendRequest(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "WhiteSource request failed")
+	}
+
+	err = json.Unmarshal(respBody, &wsResponse)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse WhiteSource response")
+	}
+
+	return wsResponse.Alerts, nil
+}
+
 // GetProjectAlerts
 func (s *System) GetProjectAlerts(projectToken string) ([]Alert, error) {
 	wsResponse := struct {
