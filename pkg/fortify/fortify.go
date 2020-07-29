@@ -18,6 +18,7 @@ import (
 	"github.com/piper-validation/fortify-client-go/fortify/file_token_controller"
 	"github.com/piper-validation/fortify-client-go/fortify/filter_set_of_project_version_controller"
 	"github.com/piper-validation/fortify-client-go/fortify/issue_group_of_project_version_controller"
+	"github.com/piper-validation/fortify-client-go/fortify/issue_of_project_version_controller"
 	"github.com/piper-validation/fortify-client-go/fortify/issue_selector_set_of_project_version_controller"
 	"github.com/piper-validation/fortify-client-go/fortify/issue_statistics_of_project_version_controller"
 	"github.com/piper-validation/fortify-client-go/fortify/project_controller"
@@ -57,6 +58,7 @@ type System interface {
 	GetProjectIssuesByIDAndFilterSetGroupedBySelector(id int64, filter, filterSetGUID string, issueFilterSelectorSet *models.IssueFilterSelectorSet) ([]*models.ProjectVersionIssueGroup, error)
 	ReduceIssueFilterSelectorSet(issueFilterSelectorSet *models.IssueFilterSelectorSet, names []string, options []string) *models.IssueFilterSelectorSet
 	GetIssueStatisticsOfProjectVersion(id int64) ([]*models.IssueStatistics, error)
+	GetIssuesByProjectVersion(id int64) ([]*models.ProjectVersionIssue, error)
 	GenerateQGateReport(projectID, projectVersionID, reportTemplateID int64, projectName, projectVersionName, reportFormat string) (*models.SavedReport, error)
 	GetReportDetails(id int64) (*models.SavedReport, error)
 	UploadResultFile(endpoint, file string, projectVersionID int64) error
@@ -543,6 +545,16 @@ func (sys *SystemInstance) GetFilterSetByDisplayName(issueFilterSelectorSet *mod
 		}
 	}
 	return nil
+}
+
+func (sys *SystemInstance) GetIssuesByProjectVersion(id int64) ([]*models.ProjectVersionIssue, error) {
+	params := &issue_of_project_version_controller.ListIssueOfProjectVersionParams{ParentID: id}
+	params.WithTimeout(sys.timeout)
+	result, err := sys.client.IssueOfProjectVersionController.ListIssueOfProjectVersion(params, sys)
+	if err != nil {
+		return nil, err
+	}
+	return result.GetPayload().Data, nil
 }
 
 func (sys *SystemInstance) getIssuesOfProjectVersion(id int64, filter, filterset, groupingtype string) ([]*models.ProjectVersionIssueGroup, error) {

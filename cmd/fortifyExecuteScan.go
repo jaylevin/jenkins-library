@@ -62,16 +62,22 @@ func fortifyExecuteScan(config fortifyExecuteScanOptions, telemetryData *telemet
 
 func runFortifyScan(config fortifyExecuteScanOptions, sys fortify.System, command fortifyExecRunner, telemetryData *telemetry.CustomData, influx *fortifyExecuteScanInflux, auditStatus map[string]string) error {
 	log.Entry().Debugf("Running Fortify scan against SSC at %v", config.ServerURL)
-	artifact, err := versioning.GetArtifact(config.BuildTool, config.BuildDescriptorFile, &versioning.Options{}, command)
-	if err != nil {
-		return fmt.Errorf("unable to get artifact from descriptor %v: %w", config.BuildDescriptorFile, err)
+
+	fortifyProjectName := config.ProjectName
+	fortifyProjectVersion := config.PullRequestName
+	if len(config.ProjectName) == 0 || len(config.PullRequestName) == 0 {
+		artifact, err := versioning.GetArtifact(config.BuildTool, config.BuildDescriptorFile, &versioning.Options{}, command)
+		if err != nil {
+			return fmt.Errorf("unable to get artifact from descriptor %v: %w", config.BuildDescriptorFile, err)
+		}
+		gav, err := artifact.GetCoordinates()
+		if err != nil {
+			return fmt.Errorf("unable to get project coordinates from descriptor %v: %w", config.BuildDescriptorFile, err)
+		}
+		log.Entry().Debugf("determined project coordinates %v", gav)
+		fortifyProjectName, fortifyProjectVersion = versioning.DetermineProjectCoordinates(config.ProjectName, config.DefaultVersioningModel, gav)
 	}
-	gav, err := artifact.GetCoordinates()
-	if err != nil {
-		return fmt.Errorf("unable to get project coordinates from descriptor %v: %w", config.BuildDescriptorFile, err)
-	}
-	log.Entry().Debugf("determined project coordinates %v", gav)
-	fortifyProjectName, fortifyProjectVersion := versioning.DetermineProjectCoordinates(config.ProjectName, config.DefaultVersioningModel, gav)
+
 	project, err := sys.GetProjectByName(fortifyProjectName, config.AutoCreate, fortifyProjectVersion)
 	if err != nil {
 		return fmt.Errorf("Failed to load project %v: %w", fortifyProjectName, err)
@@ -163,15 +169,26 @@ func runFortifyScan(config fortifyExecuteScanOptions, sys fortify.System, comman
 
 	// Generate report
 	if config.Reporting {
+
+		// Save file with link to project
 		resultURL := []byte(fmt.Sprintf("https://fortify.tools.sap/ssc/html/ssc/version/%v/fix/null/", projectVersion.ID))
 		dest := fmt.Sprintf("%vtarget/%v-%v.%v", config.ModulePath, config.ProjectName, config.PullRequestName, "txt")
 		ioutil.WriteFile(dest, resultURL, 0700)
-		log.Entry().Info("Wrote project URL to file: ", dest)
-		data, err := generateAndDownloadQGateReport(config, sys, project, projectVersion)
+
+		// Save json issue statistics report
+		data, err := generateAndDownloadIssuesReport(sys, projectVersion)
 		if err != nil {
 			return err
 		}
-		ioutil.WriteFile(fmt.Sprintf("%vtarget/%v-%v.%v", config.ModulePath, *project.Name, *projectVersion.Name, config.ReportType), data, 0700)
+		ioutil.WriteFile(fmt.Sprintf("%vtarget/%v-%v.json", config.ModulePath, *project.Name, *projectVersion.Name), data, 0700)
+		log.Entry().Infof("Wrote JSON report to file: %vtarget/%v-%v.json", config.ModulePath, *project.Name, *projectVersion.Name)
+
+		// save q gate report
+		// data, err = generateAndDownloadQGateReport(config, sys, project, projectVersion)
+		// if err != nil {
+		// 	return err
+		// }
+		// ioutil.WriteFile(fmt.Sprintf("%vtarget/%v-%v.%v", config.ModulePath, *project.Name, *projectVersion.Name, config.ReportType), data, 0700)
 	}
 
 	// Perform audit compliance checks
@@ -379,6 +396,20 @@ func generateAndDownloadQGateReport(config fortifyExecuteScanOptions, sys fortif
 		return []byte{}, fmt.Errorf("Failed to download Q-Gate Report: %w", err)
 	}
 	return data, nil
+}
+
+func generateAndDownloadIssuesReport(sys fortify.System, projectVersion *models.ProjectVersion) ([]byte, error) {
+	log.Entry().Info("Generating JSON issues report")
+	issues, err := sys.GetIssuesByProjectVersion(projectVersion.ID)
+	if err != nil {
+		log.Entry().WithError(err).Errorf("Failed to fetch project version issues for project version ID %v", projectVersion.ID)
+	}
+
+	bytes, err := json.Marshal(issues)
+	if err != nil {
+		return nil, err
+	}
+	return bytes, nil
 }
 
 func checkArtifactStatus(config fortifyExecuteScanOptions, sys fortify.System, projectVersionID int64, buildLabel string, filterSet *models.FilterSet, artifact *models.Artifact, numInvokes int) error {
