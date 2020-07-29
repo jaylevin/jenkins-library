@@ -9,7 +9,10 @@ require (
 	github.com/Masterminds/goutils v1.1.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/Microsoft/hcsshim v0.8.9 // indirect
+	github.com/basgys/goxml2json v1.1.0
+	github.com/bitly/go-simplejson v0.5.0 // indirect
 	github.com/bmatcuk/doublestar v1.3.1
+	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
 	github.com/containerd/containerd v1.3.6 // indirect
 	github.com/docker/docker v1.4.2-0.20200114201811-16a3519d870b // indirect
 	github.com/evanphx/json-patch v4.5.0+incompatible

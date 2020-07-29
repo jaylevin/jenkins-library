@@ -56,6 +56,15 @@ spec:
       - STAGES
       - STEPS
       default: true
+    - name: generateJsonReport
+      type: bool
+      description: Whether to generate a JSON report of the analysis results or not
+      mandatory: false
+      scope:
+      - PARAMETERS
+      - STAGES
+      - STEPS
+      default: true
     - name: generatePdfReport
       type: bool
       description: Whether to generate a PDF report of the analysis results or not

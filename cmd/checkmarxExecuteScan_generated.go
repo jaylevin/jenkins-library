@@ -20,8 +20,8 @@ type checkmarxExecuteScanOptions struct {
 	FilterPattern                 string `json:"filterPattern,omitempty"`
 	FullScanCycle                 string `json:"fullScanCycle,omitempty"`
 	FullScansScheduled            bool   `json:"fullScansScheduled,omitempty"`
+	GenerateJSONReport            bool   `json:"generateJsonReport,omitempty"`
 	GeneratePdfReport             bool   `json:"generatePdfReport,omitempty"`
-	GenerateJSONReport            bool   `json:"generateJSONReport,omitempty"`
 	Incremental                   bool   `json:"incremental,omitempty"`
 	Password                      string `json:"password,omitempty"`
 	Preset                        string `json:"preset,omitempty"`
@@ -231,8 +231,8 @@ func addCheckmarxExecuteScanFlags(cmd *cobra.Command, stepConfig *checkmarxExecu
 	cmd.Flags().StringVar(&stepConfig.FilterPattern, "filterPattern", `!**/node_modules/**, !**/.xmake/**, !**/*_test.go, !**/vendor/**/*.go, **/*.html, **/*.xml, **/*.go, **/*.py, **/*.js, **/*.scala, **/*.ts`, "The filter pattern used to zip the files relevant for scanning, patterns can be negated by setting an exclamation mark in front i.e. `!test/*.js` would avoid adding any javascript files located in the test directory")
 	cmd.Flags().StringVar(&stepConfig.FullScanCycle, "fullScanCycle", `5`, "Indicates how often a full scan should happen between the incremental scans when activated")
 	cmd.Flags().BoolVar(&stepConfig.FullScansScheduled, "fullScansScheduled", true, "Whether full scans are to be scheduled or not. Should be used in relation with `incremental` and `fullScanCycle`")
+	cmd.Flags().BoolVar(&stepConfig.GenerateJSONReport, "generateJsonReport", true, "Whether to generate a JSON report of the analysis results or not")
 	cmd.Flags().BoolVar(&stepConfig.GeneratePdfReport, "generatePdfReport", true, "Whether to generate a PDF report of the analysis results or not")
-	cmd.Flags().BoolVar(&stepConfig.GenerateJSONReport, "generateJSONReport", true, "Whether to generate a JSON report of the analysis results or not")
 	cmd.Flags().BoolVar(&stepConfig.Incremental, "incremental", true, "Whether incremental scans are to be applied which optimizes the scan time but might reduce detection capabilities. Therefore full scans are still required from time to time and should be scheduled via `fullScansScheduled` and `fullScanCycle`")
 	cmd.Flags().StringVar(&stepConfig.Password, "password", os.Getenv("PIPER_password"), "The password to authenticate")
 	cmd.Flags().StringVar(&stepConfig.Preset, "preset", os.Getenv("PIPER_preset"), "The preset to use for scanning, if not set explicitly the step will attempt to look up the project's setting based on the availability of `checkmarxCredentialsId`")
@@ -299,7 +299,7 @@ func checkmarxExecuteScanMetadata() config.StepData {
 						Aliases:     []config.Alias{},
 					},
 					{
-						Name:        "generatePdfReport",
+						Name:        "generateJsonReport",
 						ResourceRef: []config.ResourceReference{},
 						Scope:       []string{"PARAMETERS", "STAGES", "STEPS"},
 						Type:        "bool",
@@ -307,7 +307,7 @@ func checkmarxExecuteScanMetadata() config.StepData {
 						Aliases:     []config.Alias{},
 					},
 					{
-						Name:        "generateJSONReport",
+						Name:        "generatePdfReport",
 						ResourceRef: []config.ResourceReference{},
 						Scope:       []string{"PARAMETERS", "STAGES", "STEPS"},
 						Type:        "bool",

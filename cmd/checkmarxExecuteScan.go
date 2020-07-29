@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"archive/zip"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"encoding/xml"
+	xj "github.com/basgys/goxml2json"
 
 	"github.com/SAP/jenkins-library/pkg/checkmarx"
 	piperHttp "github.com/SAP/jenkins-library/pkg/http"
@@ -129,7 +130,20 @@ func uploadAndScan(config checkmarxExecuteScanOptions, sys checkmarx.System, pro
 		log.Entry().Fatalf("Cannot upload source code for project %v", project.Name)
 	}
 }
+func convertXMLFileToJSON(xmlReportPath string) ([]byte, error) {
+	bytes, err := ioutil.ReadFile(xmlReportPath)
+	if err != nil {
+		return nil, err
+	}
 
+	reader := strings.NewReader(string(bytes))
+	json, err := xj.Convert(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Bytes(), nil
+}
 func triggerScan(config checkmarxExecuteScanOptions, sys checkmarx.System, project checkmarx.Project, workspace string, incremental bool, influx *checkmarxExecuteScanInflux) {
 	projectIsScanning, scan := sys.ScanProject(project.ID, incremental, false, !config.AvoidDuplicateProjectScans)
 	if projectIsScanning {
@@ -149,21 +163,22 @@ func triggerScan(config checkmarxExecuteScanOptions, sys checkmarx.System, proje
 			log.Entry().Debug("Report generation is disabled via configuration")
 		}
 
-		if config.GenerateJSONReport {
-			jsonReportName := createReportName(workspace, "CxSASTReport_%v.json")
-			ok := downloadAndSaveJSONReport(sys, jsonReportName, scan, config.TeamID)
-			if ok {
-				reports = append(reports, piperutils.Path{Target: jsonReportName, Mandatory: true})
-			}
-		} else {
-			log.Entry().Debug("Report generation is disabled via configuration")
-		}
-
 		xmlReportName := createReportName(workspace, "CxSASTResults_%v.xml")
 		results := getDetailedResults(sys, xmlReportName, scan.ID)
 		reports = append(reports, piperutils.Path{Target: xmlReportName})
-		links := []piperutils.Path{piperutils.Path{Target: results["DeepLink"].(string), Name: "Checkmarx Web UI"}}
+		links := []piperutils.Path{{Target: results["DeepLink"].(string), Name: "Checkmarx Web UI"}}
 		piperutils.PersistReportsAndLinks("checkmarxExecuteScan", workspace, reports, links)
+		if config.GenerateJSONReport {
+			jsonReportName := createReportName(workspace, "CxSASTReport_%v.json")
+			reportBytes, err := convertXMLFileToJSON(xmlReportName)
+			if err != nil {
+				log.Entry().WithError(err).Fatal("Error converting XML file to JSON")
+			}
+
+			if saveJSONReport(jsonReportName, reportBytes); err != nil {
+				log.Entry().WithError(err).Fatal("Error saving JSON report to disk")
+			}
+		}
 
 		reportToInflux(results, influx)
 
@@ -273,18 +288,6 @@ func reportToInflux(results map[string]interface{}, influx *checkmarxExecuteScan
 	influx.checkmarx_data.fields.report_creation_time = results["ReportCreationTime"].(string)
 }
 
-func downloadAndSaveJSONReport(sys checkmarx.System, reportFileName string, scan checkmarx.Scan, teamID string) bool {
-	bytes := sys.GetJSONReport(scan.ID, teamID)
-	if bytes != nil {
-		log.Entry().Debugf("Downloading and saving JSON report to file %v...", reportFileName)
-		err := ioutil.WriteFile(reportFileName, bytes, 0700)
-		if err != nil {
-			return false
-		}
-	}
-	return true
-}
-
 func downloadAndSavePDFReport(sys checkmarx.System, reportFileName string, scan checkmarx.Scan) bool {
 	ok, report := generateAndDownloadReport(sys, scan.ID, "PDF")
 	if ok {
@@ -294,6 +297,16 @@ func downloadAndSavePDFReport(sys checkmarx.System, reportFileName string, scan 
 	}
 	log.Entry().Debugf("Failed to fetch report %v from backend...", reportFileName)
 	return false
+}
+
+func saveJSONReport(reportFileName string, reportBytes []byte) error {
+	log.Entry().Debugf("Saving JSON report to file %v...", reportFileName)
+	err := ioutil.WriteFile(reportFileName, reportBytes, 0700)
+	if err != nil {
+		return err
+	}
+	log.Entry().Debugf("Failed to write report to file: %v", reportFileName)
+	return nil
 }
 
 func enforceThresholds(config checkmarxExecuteScanOptions, results map[string]interface{}) bool {
