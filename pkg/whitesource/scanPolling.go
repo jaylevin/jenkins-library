@@ -48,6 +48,7 @@ func blockUntilProjectIsUpdated(projectToken string, sys whitesourcePoller, opti
 		if err != nil {
 			return err
 		}
+		fmt.Printf("polling project: %v\n", project)
 
 		if project.LastUpdateDate == "" {
 			log.Entry().Infof("last updated time missing from project metadata, retrying")
@@ -57,9 +58,11 @@ func blockUntilProjectIsUpdated(projectToken string, sys whitesourcePoller, opti
 				return fmt.Errorf("failed to parse last updated time (%s) of Whitesource project: %w",
 					project.LastUpdateDate, err)
 			}
+			fmt.Printf("Got last updated time: %v\n", lastUpdatedTime)
 			age := options.scanTime.Sub(lastUpdatedTime)
 			if age < options.maxAge {
 				//done polling
+				fmt.Printf("done polling:\n scan time: %v\n age: %v\n\n", options.scanTime, age)
 				break
 			}
 			log.Entry().Infof("time since project was last updated %v > %v, polling status...", age, options.maxAge)
